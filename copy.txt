@@ -1,7 +1,7 @@
 xxxxx
 6F81FE289A5A81022CD6CF41670B610EC5DDBFEA10BC1E25BEB519365FF82A76
 RPT-1184-Add-Bulk-Assets-Create-Add-Another-Button
-  "@craco/craco": "6.3.0",
+    "@craco/craco": "6.3.0",
     "@date-io/moment": "2.11.0",
     "@material-ui/core": "4.12.3",
     "@material-ui/icons": "4.11.2",
