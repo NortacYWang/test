@@ -1,4 +1,5 @@
 xxxxx
+https://docs.docker.com/registry/recipes/nginx/
 6F81FE289A5A81022CD6CF41670B610EC5DDBFEA10BC1E25BEB519365FF82A76
 RPT-1184-Add-Bulk-Assets-Create-Add-Another-Button
     "@craco/craco": "6.3.0",
