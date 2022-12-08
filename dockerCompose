@@ -1,0 +1,321 @@
+version: "3.2"
+services:
+
+  sccnode:
+    command: "npm start"
+    build: 
+      context: ${DEPLOY_PATH}/platform/node/
+      args: 
+        BUILD_ENV: development
+    ports:
+      - 8000:8000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock      
+      - ${DATA_FOLDER}/platform/logs:/usr/src/logs
+      - ${DATA_FOLDER}/files:/home/nortac/files
+      - ${DEPLOY_PATH}/platform/node:/usr/src/app
+      - /usr/src/app/node_modules
+    env_file:
+      - ./sccnode.env
+      - ./sccdb.env
+      - ./sccmongo.env
+      - /etc/scctitan/scc.env
+      - /etc/scctitan/user.env
+    logging: 
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"
+    restart: unless-stopped
+
+  sccwww:
+    command: "npm start"
+    build: 
+      context: ${DEPLOY_PATH}/www/reactjs
+      args: 
+        BUILD_ENV: development
+    volumes:
+      - ${DEPLOY_PATH}/www/reactjs:/usr/src/app
+      - ${DATA_FOLDER}/files:/home/nortac/files
+      - /usr/src/app/node_modules
+    env_file:
+      - ./sccwww.env
+      - /etc/scctitan/user.env
+    logging: 
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"
+    restart: unless-stopped
+
+  sccweb:
+    build: ${DEPLOY_PATH}/web/
+    volumes:
+      - ${CERTS_FOLDER}:/etc/nginx/ssl   
+      - ${DATA_FOLDER}/web/letsencrypt:/etc/letsencrypt
+    ports:
+      - "${MH_MILDEF_CCU_TAG_GPRS_PORT}:10806"      
+      - "${MH_POCKET_RECIEVE_PORT}:10804"
+      - "60001:60001"
+      - "60002:60002"
+      - "80:80"
+      - "443:443"
+    env_file:
+      - ./sccweb.env
+      - /etc/scctitan/user.env
+    depends_on:
+      - sccnode
+      - sccmh
+      - sccwww
+    logging: 
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"  
+    restart: unless-stopped
+
+  scctranslate:
+    command: "npm start"
+    build: 
+      context: ${DEPLOY_PATH}/translate/node/
+      args: 
+        BUILD_ENV: development
+    environment:
+      - "DB_WRITE_INTERVAL="
+      - "CONNECT_TO_AWS_TRANSLATE="
+    ports:
+      - 8001:8001
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock      
+      - ${DATA_FOLDER}/translate/logs:/usr/src/logs
+      - ${DEPLOY_PATH}/translate/node:/usr/src/app
+      - /usr/src/app/node_modules
+    env_file:
+      - ./sccnode.env
+      - ./sccdb.env
+      - ./sccmongo.env
+      - /etc/scctitan/scc.env
+      - /etc/scctitan/user.env
+    logging: 
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"
+    restart: unless-stopped
+
+#  scclogger:
+#    command: "npm start"
+#    build: 
+#      context: ${DEPLOY_PATH}/logger/
+#      args: 
+#        BUILD_ENV: development
+#    ports:
+#      - 3000:3000
+#    volumes:
+#      - /var/run/docker.sock:/var/run/docker.sock      
+#      - ${DEPLOY_PATH}/logger:/usr/src/app
+#      - ${DATA_FOLDER}/mh/logs:/usr/src/app/public/volumes/mh
+#      - /usr/src/app/node_modules
+#    env_file:
+#      - /etc/scctitan/scc.env
+#      - /etc/scctitan/user.env
+#    logging: 
+#      driver: "json-file"
+#      options:
+#        max-size: "100m"
+#        max-file: "1"
+#    restart: unless-stopped
+  
+  sccredis:
+    image: t24d/redis
+    hostname: redis
+    volumes: 
+      - ${DATA_FOLDER}/redis:/data
+    logging: 
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"  
+    restart: unless-stopped
+
+  sccdb:
+    # image: t24d/mysqlsource:1.7.5.0
+    build: ${DEPLOY_PATH}/mysql/
+    hostname: sccdb
+    ports: 
+      - "3306:3306"
+    volumes:
+      - ${DATA_FOLDER}/mysql:/usr/mysql/mysql
+      - /etc/scctitan/backup:/backup
+      - ${DEPLOY_PATH}/${DEPLOY_ENV}/migrations:/migration/custom/migrations
+    env_file: 
+      - ./sccdb.env
+      - /etc/scctitan/user.env
+    user: mysql 
+    logging: 
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"  
+    restart: unless-stopped
+    cap_add:
+      - SYS_NICE  # CAP_SYS_NICE
+
+  sccdb-backup:
+    #build: ${DEPLOY_PATH}/mysql-backup
+    image: t24d/mysql-backup:1.1.0
+    environment:
+      - "MAX_BACKUPS=10"
+      - "DEPLOY_ENV=${DEPLOY_ENV}"
+      - "CRON_TIME=0 0 * * *"
+    volumes: 
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/scctitan/backup:/backup
+    env_file: 
+      - /etc/scctitan/user.env 
+    logging: 
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"
+    restart: unless-stopped
+
+  sccmongo:
+    build: ${DEPLOY_PATH}/mongo
+    volumes:
+      - ${DATA_FOLDER}/mongodb:/data/db
+      - /etc/scctitan/backup:/backup
+    ports: 
+      - "27017:27017"
+    env_file: 
+      - ./sccmongo.env
+    logging: 
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"  
+    restart: unless-stopped 
+
+  sccmh:
+    image: t24d/mh-dev:5.8.2.0
+    volumes:
+      - ${DATA_FOLDER}/mh/logs:/app/Release/netcoreapp2.2/publish/logs
+      - ${DATA_FOLDER}/files:/home/nortac/files
+    ports:
+      - "${MH_IRIDIUM_LISTEN_PORT}:10901"
+      - "${MH_SHADOW_GPRS_PORT}:10701"
+      - "10800:10800"  
+      - "${MH_IPHONE_POCKET_SEND_PORT}:10802"
+      - "10803:10803"
+      - "${MH_PB_GPRS_PORT}:10805"
+      - "${MH_IDP_LISTEN_PORT}:10807"
+      - "${MH_HSL_LISTEN_PORT}:10809"
+      - "${MH_NAL_GPRS_PORT}:10811"
+      - "10900:10900"
+      - "${MH_SCCT_WIFI_PORT}:11000"
+      - "${MH_WEB_SERVICE}:60000"
+    env_file:
+      - ./sccmh.env
+      - ./sccdb.env
+      - /etc/scctitan/user.env
+    logging: 
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"  
+    restart: unless-stopped
+  
+
+  sccmail-api:
+    image: t24d/email:1.1.0  
+    volumes:
+      - ${DATA_FOLDER}/email/logs:/usr/src/logs
+      - ${DEPLOY_PATH}/email:/usr/src/app  
+      - /usr/src/app/node_modules
+    env_file:
+      - ./sccmail-api.env
+    logging: 
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"  
+    restart: unless-stopped  
+
+  sccmail:
+    build: ${DEPLOY_PATH}/email-server/
+    hostname: mail
+    domainname: scctitan.com
+    ports:
+    - "25:25"
+    - "143:143"
+    - "587:587"
+    - "993:993"
+    volumes:
+      - ${DATA_FOLDER}/mail/main:/var/mail
+      - ${DATA_FOLDER}/mail/state:/var/mail-state    
+      - ${CERTS_FOLDER}:/tmp/ssl:ro    
+      - ./res/mail/opendkim:/tmp/docker-mailserver/opendkim
+      - ./res/mail/accounts:/sccmail/accounts
+    cap_add:
+      - NET_ADMIN
+    logging: 
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"  
+    restart: unless-stopped  
+
+  sccsms-api:    
+    image: t24d/sms:1.1.0  
+    volumes:
+      - ${DATA_FOLDER}/sms/logs:/usr/src/logs
+      - ${DEPLOY_PATH}/sms:/usr/src/app
+      - /usr/src/app/node_modules
+    env_file:
+      - ./sccsms-api.env
+      - ./sccmongo.env
+    logging: 
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"  
+    restart: unless-stopped
+
+  scciridium-billing:
+    build: ${DEPLOY_PATH}/iridium-billing
+    env_file:
+      - ./iridium-billing.env
+      - ./sccmongo.env
+      - /etc/scctitan/user.env
+    logging: 
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "1"  
+    restart: unless-stopped
+
+  #sccrabbitmq: 
+  #  image: rabbitmq:alpine
+
+  # sccmonitor:
+  #   build: ${DEPLOY_PATH}/monitor
+  #   volumes:
+  #     - /etc/scctitan:/etc/scctitan
+  #     - ${DEPLOY_PATH}:${DEPLOY_PATH}
+  #     - /usr/lib:/usr/lib
+  #     - /etc/passwd:/etc/passwd
+  #     - /etc/group:/etc/group
+  #     - /usr/bin/docker:/usr/bin/docker
+  #     - /usr/local/bin:/usr/local/bin
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   environment: 
+  #     - MONITOR_DISPLAY_NAME=${SERVER_NAME-SCCTITAN}
+  #   env_file:
+  #     - ./sccmonitor.env  
+  #     - /etc/scctitan/user.env
+  #   logging: 
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "100m"
+  #       max-file: "1"  
+  #   restart: unless-stopped
